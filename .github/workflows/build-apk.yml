@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,8 +24,21 @@ jobs:
         run: |
           chmod +x ./gradlew
           ./gradlew --no-daemon assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk EdgeCam.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: EdgeCam-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: EdgeCam.apk
+
+      # Publish the APK as a release so it can be downloaded from a plain link, no login needed:
+      # https://github.com/JustJackYu/EdgeCamera/releases/latest/download/EdgeCam.apk
+      - name: Publish release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: EdgeCam build ${{ github.run_number }}
+          body: 폰에서 EdgeCam.apk를 받아 설치하세요.
+          files: EdgeCam.apk
+          make_latest: true
