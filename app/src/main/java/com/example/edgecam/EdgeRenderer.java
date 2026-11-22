@@ -110,6 +110,7 @@ public class EdgeRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     private volatile float threshold = 0.4f;
     private volatile float thickness = 1.75f;
     private volatile boolean captureRequested = false;
+    private volatile boolean stereo = false;
 
     public EdgeRenderer(GLSurfaceView view, Listener listener) {
         this.view = view;
@@ -131,6 +132,12 @@ public class EdgeRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
     /** Size of the camera frame after rotation to the screen orientation. */
     public void setCameraSize(int w, int h) {
         camSize = ((long) w << 32) | (h & 0xffffffffL);
+        view.requestRender();
+    }
+
+    /** Side-by-side view for phone VR viewers. */
+    public void setStereo(boolean on) {
+        stereo = on;
         view.requestRender();
     }
 
@@ -225,19 +232,38 @@ public class EdgeRenderer implements GLSurfaceView.Renderer, SurfaceTexture.OnFr
         GLES20.glUniformMatrix4fv(GLES20.glGetUniformLocation(progOes, "uTexMatrix"), 1, false, texMatrix, 0);
         drawQuad(progOes);
 
-        // Pass 2: edges -> screen, center-cropped so the image fills the screen without stretching.
-        float camAspect = cw / (float) ch;
-        float viewAspect = viewW / (float) viewH;
-        float sx = 1f, sy = 1f;
-        if (viewAspect > camAspect) {
-            sy = viewAspect / camAspect;
-        } else {
-            sx = camAspect / viewAspect;
-        }
+        // Pass 2: edges -> screen.
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0);
         GLES20.glViewport(0, 0, viewW, viewH);
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
-        drawEdges(cw, ch, sx, sy);
+        float camAspect = cw / (float) ch;
+        if (stereo) {
+            // VR viewer: the same picture once per eye, side by side. Fit (not crop) so the whole
+            // field of view stays visible; the leftover bars are black like everything else.
+            int eyeW = viewW / 2;
+            float eyeAspect = eyeW / (float) viewH;
+            float sx = 1f, sy = 1f;
+            if (eyeAspect > camAspect) {
+                sx = camAspect / eyeAspect;
+            } else {
+                sy = eyeAspect / camAspect;
+            }
+            GLES20.glViewport(0, 0, eyeW, viewH);
+            drawEdges(cw, ch, sx, sy);
+            GLES20.glViewport(viewW - eyeW, 0, eyeW, viewH);
+            drawEdges(cw, ch, sx, sy);
+            GLES20.glViewport(0, 0, viewW, viewH);
+        } else {
+            // Normal: center-crop so the image fills the screen without stretching.
+            float viewAspect = viewW / (float) viewH;
+            float sx = 1f, sy = 1f;
+            if (viewAspect > camAspect) {
+                sy = viewAspect / camAspect;
+            } else {
+                sx = camAspect / viewAspect;
+            }
+            drawEdges(cw, ch, sx, sy);
+        }
 
         if (captureRequested) {
             captureRequested = false;
